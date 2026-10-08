@@ -1,0 +1,19 @@
+{
+  "symbols": [
+    {
+      "symbol": "B",
+      "equations": ["Bxyz = x(yz)"],
+      "presence": "present"
+    },
+    {
+      "symbol": "M",
+      "equations": ["Mx = xx"],
+      "presence": "present"
+    },
+    {
+      "symbol": "Y",
+      "equations": ["Yx = x(Yx)"],
+      "presence": "absent"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "magma-search-dev",
+  "build": {
+    "dockerfile": "Containerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "DavidAnson.vscode-markdownlint"
+      ]
+    }
+  }
+}

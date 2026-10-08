@@ -1,0 +1,49 @@
+name: Test
+
+on:
+  push:
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - 'examples/**'
+      - '.github/workflows/test.yml'
+  pull_request:
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - 'examples/**'
+      - '.github/workflows/test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain:
+          - "1.88.0"
+          - stable
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install CaDiCaL build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ libclang-dev
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - run: cargo test --workspace --all-targets

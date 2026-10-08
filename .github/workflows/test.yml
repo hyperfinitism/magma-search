@@ -6,14 +6,22 @@ on:
       - '**/*.rs'
       - '**/Cargo.toml'
       - '**/Cargo.lock'
-      - 'examples/**'
+      - 'samples/**'
+      - 'mallob/**'
+      - '.dockerignore'
+      - '.devcontainer/Containerfile'
+      - '.devcontainer/devcontainer.json'
       - '.github/workflows/test.yml'
   pull_request:
     paths:
       - '**/*.rs'
       - '**/Cargo.toml'
       - '**/Cargo.lock'
-      - 'examples/**'
+      - 'samples/**'
+      - 'mallob/**'
+      - '.dockerignore'
+      - '.devcontainer/Containerfile'
+      - '.devcontainer/devcontainer.json'
       - '.github/workflows/test.yml'
   workflow_dispatch:
 
@@ -26,6 +34,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  MAGMA_MALLOB_MODE: container
+  MAGMA_CONTAINER_ENGINE: docker
+  MAGMA_MALLOB_IMAGE: magma-mallob:4a3b8da
 
 jobs:
   test:
@@ -39,11 +50,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install CaDiCaL build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y g++ libclang-dev
+      - name: Build Mallob solver image
+        run: docker build -t magma-mallob:4a3b8da -f mallob/Dockerfile mallob
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
           toolchain: ${{ matrix.toolchain }}
       - run: cargo test --workspace --all-targets
+
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build devcontainer
+        run: docker build -t magma-search-dev -f .devcontainer/Containerfile .
+      - name: Test inside devcontainer
+        run: |
+          docker run --rm --init --ipc=private --shm-size=32g \
+            --mount "type=bind,source=$PWD,target=/workspace,readonly" \
+            --workdir /workspace --env MAGMA_MALLOB_MODE=native \
+            magma-search-dev \
+            cargo test --workspace --all-targets --locked --target-dir /tmp/magma-target

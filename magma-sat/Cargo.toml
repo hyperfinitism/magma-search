@@ -6,10 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-magma-core = { path = "../magma-core", features = ["sat"] }
+magma-core = { path = "../magma-core" }
 anyhow.workspace = true
 clap = { workspace = true, features = ["derive"] }
-rustsat.workspace = true
-rustsat-cadical.workspace = true
+libc.workspace = true
+rustsat = { workspace = true, features = ["fxhash"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+tempfile.workspace = true

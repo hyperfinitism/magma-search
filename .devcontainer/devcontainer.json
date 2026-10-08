@@ -1,8 +1,14 @@
 {
   "name": "magma-search-dev",
   "build": {
-    "dockerfile": "Containerfile"
+    "dockerfile": "Containerfile",
+    "context": ".."
   },
+  "containerEnv": {
+    "MAGMA_MALLOB_MODE": "native"
+  },
+  "init": true,
+  "runArgs": ["--shm-size=32g"],
   "customizations": {
     "vscode": {
       "extensions": [

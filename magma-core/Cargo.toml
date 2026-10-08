@@ -5,13 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-[features]
-sat = ["dep:rustsat", "dep:rustsat-cadical"]
-
 [dependencies]
 anyhow.workspace = true
 clap = { workspace = true, features = ["derive"] }
-rustsat = { workspace = true, optional = true }
-rustsat-cadical = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

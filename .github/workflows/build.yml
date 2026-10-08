@@ -33,10 +33,6 @@ jobs:
           - stable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install CaDiCaL build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y g++ libclang-dev
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
           toolchain: ${{ matrix.toolchain }}

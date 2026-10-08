@@ -5,7 +5,6 @@ mod processes;
 
 use anyhow::{Context, Result, ensure};
 use clap::Parser;
-use isomorphism::Method;
 use magma_core::{
     Elements, Operation, SearchArgs, Table, Theory, TheorySpec, next_assignment, write_json,
 };
@@ -20,9 +19,6 @@ use std::{collections::HashMap, fs, io::Write, num::NonZeroUsize, time::Instant}
 struct Args {
     #[command(flatten)]
     search: SearchArgs,
-    /// Isomorphism backend.
-    #[arg(long, value_enum, default_value_t = Method::Permutation)]
-    isomorphism: Method,
     /// Number of exhaustive search processes (default: available logical CPUs).
     #[arg(long, default_value_t = default_processes())]
     processes: NonZeroUsize,
@@ -38,23 +34,19 @@ struct Magma {
     class_id: usize,
     operation_table: Vec<Vec<usize>>,
     elements: Elements,
-    labeled_magmas_in_class: u128,
+    number_of_magmas: u128,
 }
 
 struct Classes {
-    method: Method,
     canonical_ids: HashMap<Vec<usize>, usize>,
-    buckets: HashMap<Vec<Vec<usize>>, Vec<usize>>,
     tables: Vec<Table>,
     labeled_counts: Vec<u128>,
 }
 
 impl Classes {
-    fn new(method: Method) -> Self {
+    fn new() -> Self {
         Self {
-            method,
             canonical_ids: HashMap::new(),
-            buckets: HashMap::new(),
             tables: Vec::new(),
             labeled_counts: Vec::new(),
         }
@@ -66,37 +58,16 @@ impl Classes {
 
     fn merge(&mut self, table: Table, count: u128) -> Result<()> {
         ensure!(count > 0, "an isomorphism class must contain a table");
-        match self.method {
-            Method::Permutation => {
-                let key = isomorphism::canonical(&table);
-                if let Some(&id) = self.canonical_ids.get(&key) {
-                    self.labeled_counts[id] = self.labeled_counts[id]
-                        .checked_add(count)
-                        .context("isomorphism-class count exceeds u128")?;
-                } else {
-                    let id = self.tables.len();
-                    self.canonical_ids.insert(key, id);
-                    self.tables.push(table);
-                    self.labeled_counts.push(count);
-                }
-            }
-            Method::Sat => {
-                let key = isomorphism::invariant(&table);
-                if let Some(ids) = self.buckets.get(&key) {
-                    for &id in ids {
-                        if isomorphism::isomorphic(&table, &self.tables[id])? {
-                            self.labeled_counts[id] = self.labeled_counts[id]
-                                .checked_add(count)
-                                .context("isomorphism-class count exceeds u128")?;
-                            return Ok(());
-                        }
-                    }
-                }
-                let id = self.tables.len();
-                self.buckets.entry(key).or_default().push(id);
-                self.tables.push(table);
-                self.labeled_counts.push(count);
-            }
+        let key = isomorphism::canonical(&table);
+        if let Some(&id) = self.canonical_ids.get(&key) {
+            self.labeled_counts[id] = self.labeled_counts[id]
+                .checked_add(count)
+                .context("isomorphism-class count exceeds u128")?;
+        } else {
+            let id = self.tables.len();
+            self.canonical_ids.insert(key, id);
+            self.tables.push(table);
+            self.labeled_counts.push(count);
         }
         Ok(())
     }
@@ -115,7 +86,6 @@ struct SizeSummary {
 #[derive(Serialize)]
 struct Summary {
     theory: TheorySpec,
-    isomorphism: Method,
     processes: usize,
     examined_magmas: u128,
     found_magmas: u128,
@@ -150,7 +120,6 @@ impl Operation for FlatOperation<'_> {
 fn enumerate_range(
     n: usize,
     theory: &Theory,
-    method: Method,
     start: u128,
     end: u128,
 ) -> Result<(Classes, u128, u128)> {
@@ -159,7 +128,7 @@ fn enumerate_range(
         start < end && end <= table_count(n)?,
         "require a nonempty range within the operation tables"
     );
-    let mut classes = Classes::new(method);
+    let mut classes = Classes::new();
     let mut flat = vec![0; n * n];
     let mut code = start;
     for value in flat.iter_mut().rev() {
@@ -187,14 +156,14 @@ fn search(n: usize, args: &Args, theory: &Theory) -> Result<SizeSummary> {
     let dir = args.search.out.join(format!("size{n}"));
     fs::create_dir(&dir)?;
     let (classes, examined, found, processes) =
-        processes::enumerate(n, theory, args.isomorphism, args.processes.get())?;
+        processes::enumerate(n, theory, args.processes.get())?;
     for (id, table) in classes.tables.iter().enumerate() {
         let magma = Magma {
             size: n,
             class_id: id,
             operation_table: table.operation_table().to_vec(),
             elements: theory.elements(table),
-            labeled_magmas_in_class: classes.labeled_counts[id],
+            number_of_magmas: classes.labeled_counts[id],
         };
         write_json(&dir.join(format!("{id}.json")), &magma)?;
     }
@@ -225,9 +194,8 @@ fn run(args: Args) -> Result<()> {
     let mut sizes = Vec::new();
     for n in sizes_requested {
         eprintln!(
-            "size {n}: examining {} operation tables ({:?} isomorphism, up to {} processes)",
+            "size {n}: examining {} operation tables (up to {} processes)",
             table_count(n)?,
-            args.isomorphism,
             args.processes
         );
         let result = search(n, &args, &theory)?;
@@ -239,7 +207,6 @@ fn run(args: Args) -> Result<()> {
     }
     let summary = Summary {
         theory: theory.spec(),
-        isomorphism: args.isomorphism,
         processes: args.processes.get(),
         examined_magmas: sizes.iter().map(|s| s.examined_magmas).sum(),
         found_magmas: sizes.iter().map(|s| s.found_magmas).sum(),

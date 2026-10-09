@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod input;
-#[cfg(feature = "sat")]
-pub mod sat;
 mod term;
 
 pub use input::{SearchArgs, SymbolValues, write_json};
@@ -48,7 +46,7 @@ pub struct Symbol {
     pub values: Option<Vec<usize>>,
 }
 
-/// Parsed and validated definitions, shared by evaluation and SAT encoding.
+/// Symbol definitions with equations and witness constraints.
 #[derive(Clone, Debug)]
 pub struct Theory {
     pub symbols: Vec<Symbol>,
@@ -278,8 +276,6 @@ pub trait Operation {
     fn satisfies(&self, symbol: &Symbol, candidate: usize) -> bool {
         assert!(candidate < self.size(), "candidate outside operation table");
         symbol.equations.iter().all(|equation| {
-            // Common laws have only a few variables. Exhaustive search visits
-            // billions of tables, so keep these assignments on the stack.
             let mut local = [0; 8];
             let mut large;
             let assignment = if equation.variables.len() <= local.len() {

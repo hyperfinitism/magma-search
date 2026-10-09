@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod encoding;
+mod sat;
 mod solver;
 
 use anyhow::{Context, Result, ensure};
@@ -8,32 +9,30 @@ use clap::Parser;
 use encoding::Encoding;
 use magma_core::{Elements, SearchArgs, Theory, TheorySpec, write_json};
 use rustsat::solvers::SolverResult;
+use sat::MAX_THREADS;
 use serde::Serialize;
 use std::{
     fs::{self, File},
     io::{BufWriter, Write},
-    num::NonZeroUsize,
     time::Instant,
 };
 
 #[derive(Debug, Parser)]
-#[command(
-    version,
-    about = "Find one finite magma per size using parallel SAT searches"
-)]
+#[command(version, about = "Find one finite magma per size using Mallob")]
 struct Args {
     #[command(flatten)]
     search: SearchArgs,
-    /// Number of parallel searches of the same size (default: available logical CPUs).
-    #[arg(long, default_value_t = default_threads())]
-    threads: NonZeroUsize,
+    /// SAT worker thread budget (default: available logical CPUs, capped at 128).
+    #[arg(long, default_value_t = default_threads(), value_parser = clap::value_parser!(u32).range(1..=i64::from(MAX_THREADS)))]
+    threads: u32,
     /// Write the CNF sent to the solver as sizeN.cnf (DIMACS).
     #[arg(long)]
     emit_cnf: bool,
 }
 
-fn default_threads() -> NonZeroUsize {
-    std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN)
+fn default_threads() -> u32 {
+    std::thread::available_parallelism()
+        .map_or(1, |threads| threads.get().min(MAX_THREADS as usize) as u32)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
@@ -52,7 +51,6 @@ struct SizeResult {
     operation_table: Option<Vec<Vec<usize>>>,
     elements: Option<Elements>,
     threads: usize,
-    winning_worker: Option<usize>,
     operation_variables: usize,
     variables: u32,
     clauses: usize,
@@ -73,7 +71,7 @@ struct SizeSummary {
 
 #[derive(Serialize)]
 struct Summary {
-    solver: &'static str,
+    solver: String,
     threads: usize,
     theory: TheorySpec,
     complete: bool,
@@ -101,7 +99,7 @@ fn solve_size(n: usize, theory: &Theory, args: &Args) -> Result<SizeResult> {
     let variables = encoding.n_vars;
     let clauses = encoding.cnf.len();
     let solving_started = Instant::now();
-    let outcome = solver::solve(&encoding, args.threads.get())?;
+    let outcome = solver::solve(&encoding, args.threads as usize)?;
     let status = match outcome.status {
         SolverResult::Sat => Status::Sat,
         SolverResult::Unsat => Status::Unsat,
@@ -113,8 +111,7 @@ fn solve_size(n: usize, theory: &Theory, args: &Args) -> Result<SizeResult> {
         status,
         operation_table: outcome.operation_table,
         elements: outcome.elements,
-        threads: args.threads.get(),
-        winning_worker: outcome.winning_worker,
+        threads: args.threads as usize,
         operation_variables: n * n * n,
         variables,
         clauses,
@@ -142,10 +139,10 @@ fn run(args: Args) -> Result<()> {
             "output for size {n} already exists; choose a new --out"
         );
     }
-    fs::create_dir_all(&args.search.out)?;
     let solver_signature = solver::signature()?;
+    fs::create_dir_all(&args.search.out)?;
     eprintln!(
-        "{solver_signature}: {} parallel searches per size",
+        "{solver_signature}: SAT worker thread budget {}",
         args.threads
     );
     let started = Instant::now();
@@ -171,7 +168,7 @@ fn run(args: Args) -> Result<()> {
     let unknown_sizes = sizes.iter().filter(|s| s.status == Status::Unknown).count();
     let summary = Summary {
         solver: solver_signature,
-        threads: args.threads.get(),
+        threads: args.threads as usize,
         theory: theory.spec(),
         complete: unknown_sizes == 0,
         sat_sizes: sizes.iter().filter(|s| s.status == Status::Sat).count(),

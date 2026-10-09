@@ -3,10 +3,25 @@ FROM rust:1.98.0-trixie@sha256:620dbcd124499c59e2406d3741574b5c5838cf9eb9656f0c3
 RUN rustup component add rustfmt clippy
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
         ca-certificates \
-        g++ \
+        cmake \
+        curl \
         git \
-        libclang-dev \
+        libopenmpi-dev \
+        openmpi-bin \
+        procps \
+        unzip \
+        zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
+ARG MALLOB_BUILD_JOBS=2
+COPY mallob/build-mallob.sh /tmp/build-mallob.sh
+RUN MALLOB_BUILD_JOBS="$MALLOB_BUILD_JOBS" bash /tmp/build-mallob.sh \
+    && rm /tmp/build-mallob.sh \
+    && rm -rf /mallob \
+    && mv /runtime/mallob /mallob \
+    && rmdir /runtime
+
+ENV MAGMA_MALLOB_MODE=native
 WORKDIR /workspaces/magma-search

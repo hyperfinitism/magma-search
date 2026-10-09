@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{Classes, enumerate_range, isomorphism::Method, table_count};
+use crate::{Classes, enumerate_range, table_count};
 use anyhow::{Context, Result, ensure};
 use magma_core::{Table, Theory, TheorySpec};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -16,7 +16,6 @@ use std::{
 struct WorkerRequest {
     n: usize,
     theory: TheorySpec,
-    method: Method,
     start: u128,
     end: u128,
 }
@@ -147,7 +146,6 @@ impl WorkerStream {
 pub fn enumerate(
     n: usize,
     theory: &Theory,
-    method: Method,
     requested: usize,
 ) -> Result<(Classes, u128, u128, usize)> {
     ensure!(n > 0, "size must be positive");
@@ -155,7 +153,7 @@ pub fn enumerate(
     let partitions = Partitions::new(total, requested)?;
     let count = partitions.count;
     if count == 1 {
-        let (classes, examined, found) = enumerate_range(n, theory, method, 0, total)?;
+        let (classes, examined, found) = enumerate_range(n, theory, 0, total)?;
         return Ok((classes, examined, found, 1));
     }
 
@@ -182,7 +180,6 @@ pub fn enumerate(
             &WorkerRequest {
                 n,
                 theory: specification.clone(),
-                method,
                 start,
                 end,
             },
@@ -228,7 +225,7 @@ pub fn enumerate(
         streams.push(stream);
     }
 
-    let mut classes = Classes::new(method);
+    let mut classes = Classes::new();
     while let Some(Reverse((flat, index, weight))) = pending.pop() {
         let next = streams[index]
             .next(Some(&flat))
@@ -265,13 +262,8 @@ pub fn run_worker() -> Result<()> {
     );
     let theory = Theory::from_spec(request.theory)?;
     let (mut records, examined, found) = {
-        let (classes, examined, found) = enumerate_range(
-            request.n,
-            &theory,
-            request.method,
-            request.start,
-            request.end,
-        )?;
+        let (classes, examined, found) =
+            enumerate_range(request.n, &theory, request.start, request.end)?;
         let records: Vec<_> = classes
             .tables
             .into_iter()

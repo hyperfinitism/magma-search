@@ -269,7 +269,8 @@ impl Encoding {
 #[cfg(test)]
 mod tests {
     use super::Encoding;
-    use magma_core::{Theory, sat};
+    use crate::sat;
+    use magma_core::Theory;
     use rustsat::solvers::SolverResult;
 
     fn two_sided_unit(table: &[[usize; 2]; 2], candidate: usize) -> bool {

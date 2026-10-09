@@ -24,32 +24,59 @@ The built-in symbols include the following equations:
 
 Here, the binary operation is left associative: $abc = (ab)c$.
 
-The tools use the SAT solver [CaDiCaL](https://github.com/arminbiere/cadical) through [RustSAT](https://github.com/chrjabs/rustsat).
+SAT solving uses [Mallob](https://github.com/domschrei/mallob), with its `mallob-quick` configuration for parallel searches and [RustSAT](https://github.com/chrjabs/rustsat) providing SAT interfaces.
 
 ## Installation
 
-### Install dependencies
+This tool only supports Linux hosts.
+For non-Linux hosts, use a Linux container or VM.
+
+This repository ships a Debian-based [Development Container](https://containers.dev/).
+Once opening this repository in the devcontainer, all required packages will be installed automatically.
+
+### Prerequisites
+
+Install Rust toolchain:
 
 ```bash
-# Rust toolchain
-curl https://sh.rustup.rs -sSf | sh
-source $HOME/.cargo/bin/env
-
-# CaDiCaL's dependencies
-sudo apt update
-sudo apt install -y g++ libclang-dev
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
 ```
 
-### Build
+Install a container runtime (Docker or Podman):
+
+```bash
+# Docker
+sudo apt install -y docker.io
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+```bash
+# Podman
+sudo apt update
+sudo apt install -y podman
+```
+
+For Podman, set the environment variable before running SAT commands:
+
+```bash
+export MAGMA_CONTAINER_ENGINE=podman
+```
+
+### Install Mallob (containerised)
+
+Build the Mallob container image:
 
 ```bash
 git clone https://github.com/hyperfinitism/magma-search
 pushd magma-search
+    docker build -t magma-mallob:4a3b8da -f mallob/Dockerfile mallob
     cargo build --all-targets --release
 popd
 ```
 
-## Specifications
+## Magma specifications
 
 Both `magma-iso` and `magma-sat` require either `--size N` for the size of the underlying set, or both `--min N` and `--max N` for its range.
 Use `--spec FILE` to provide a specification of magmas in JSON format:
@@ -113,28 +140,18 @@ The `magma-iso` command enumerates isomorphism classes of magmas that satisfy th
 
 ```bash
 # Search for BMI-algebras of size 1 to 4
-magma-iso --min 1 --max 4 --include B,M,I --out out/bm
+magma-iso --min 1 --max 4 --include B,M,I --out out/bmi-iso-1-4
 
-# Search for BCI-algebras of size 1 to 4 w/o Y
-magma-iso --min 1 --max 4 --include B,C,I --exclude Y --out out/bc-wo-y
+# Search for BCI-algebras of size 4 w/o Y
+magma-iso --size 4 --include B,C,I --exclude Y --out out/bc-wo-y-iso-4
 
-# Use a specification at one specific size
-magma-iso --size 3 --spec samples/bm-wo-y.json --out out/bm-wo-y-spec
-
-# Use SAT to decide whether two tables are isomorphic
-magma-iso --size 3 --spec samples/bm-wo-y.json --isomorphism sat --out out/bm-wo-y-sat
+# Use specification file
+magma-iso --min 1 --max 4 --spec samples/bm-wo-y.json --out out/bm-wo-y-iso-1-4
 ```
 
 Directories named `size%d` are created under the directory specified by `--out`, containing one JSON operation table per isomorphism class and the candidate elements of each symbol.
+`number_of_magmas` counts the tables in the isomorphism class.
 `summary.json` includes the specification, the counts of examined and matching tables, and the number of isomorphism classes.
-
-`--isomorphism permutation|sat` is used to select the method for determining isomorphism between two tables; the default is `permutation`.
-The permutation method (`permutation`) simply checks every possible permutation.
-The SAT method (`sat`) reduces the existence of an isomorphism to a SAT problem by treating a mapping as $n^{2}$ Boolean variables.
-Both methods enumerate the same classes. Every SAT isomorphism check uses a single solver thread.
-Fixed witness indices filter the labeled operation tables; isomorphism remains an isomorphism of the binary operation, without distinguished constants.
-Each output representative is the lexicographically smallest table in its class that satisfies the search conditions, which can differ from the unrestricted canonical table when indices are fixed.
-`labeled_magmas_in_class` counts only the labeled tables that satisfy those conditions.
 
 `--processes N` divides all possible magmas into batches and performs a parallel search using multiple processes.
 The default value is the maximum number of logical cores.
@@ -145,13 +162,13 @@ The `magma-sat` command translates constraints on finite magmas into SAT problem
 
 ```bash
 # Find BM-algebras without Y
-magma-sat --min 1 --max 10 --include B,M --exclude Y --out out/bm-wo-y-sat
+magma-sat --min 1 --max 5 --include B,M --exclude Y --out out/bm-wo-y-sat-1-5
 
 # Also output CNF files
-magma-sat --min 1 --max 10 --include B,M --exclude Y --out out/bm-wo-y-cnf --emit-cnf
+magma-sat --min 1 --max 5 --include B,M --exclude Y --out out/bm-wo-y-sat-cnf-1-5 --emit-cnf
 
-# Use specification files
-magma-sat --size 2 --spec samples/bm-wo-y.json --out out/bm-wo-y-spec
+# Use specification file and a four-thread SAT worker budget
+magma-sat --size 10 --spec samples/bm-wo-y-optimised.json --threads 4 --out out/bm-wo-y-sat-10
 ```
 
 The results are saved in `size%d.json` under `--out`.
@@ -160,4 +177,5 @@ Each output file contains the specification, the SAT result (satisfiable, unsati
 
 If the `--emit-cnf` flag is specified, the translated SAT problems in conjunctive normal form (CNF) are also output to `size%d.cnf`, which can be used by other SAT solvers.
 
-`--threads N` runs parallel searches of the same SAT problem (portfolio parallelism); the default is the number of available logical CPUs.
+`--threads N` sets the SAT worker thread budget, from 1 to 128. The default is the number of available logical CPUs, capped at 128.
+For odd budgets greater than one, one solver worker is unused. The `threads` field in the output records the requested budget.
